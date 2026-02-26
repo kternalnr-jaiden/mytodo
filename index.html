@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Sync To-Do</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-100 p-2 md:p-8">
+    <div id="app" class="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 h-auto md:min-h-[850px]">
+        
+        <div class="flex-1 bg-white shadow-xl rounded-2xl overflow-hidden flex flex-col border border-slate-200">
+            <div class="bg-indigo-600 p-6 text-white text-center">
+                <div class="flex justify-between items-center">
+                    <button @click="changeDate(-1)" class="p-2 hover:bg-indigo-500 rounded-lg transition">◀</button>
+                    <div>
+                        <h1 class="text-2xl font-bold">{{ displayFullDate }}</h1>
+                        <p class="text-indigo-200 text-sm">{{ viewLabel }} 리스트</p>
+                    </div>
+                    <button @click="changeDate(1)" class="p-2 hover:bg-indigo-500 rounded-lg transition">▶</button>
+                </div>
+            </div>
+
+            <div class="flex border-b bg-white font-bold text-sm">
+                <button @click="currentView = 'daily'" :class="currentView === 'daily' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'" class="flex-1 py-4">Daily (오늘 할 일)</button>
+                <button @click="currentView = 'weekly'" :class="currentView === 'weekly' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'" class="flex-1 py-4">Weekly 목록</button>
+                <button @click="currentView = 'monthly'" :class="currentView === 'monthly' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'" class="flex-1 py-4">Monthly 목록</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 md:p-6 custom-scroll bg-slate-50 min-h-[450px]">
+                <div v-for="todo in viewFilteredTodos" :key="todo.id" class="flex items-center p-4 mb-3 bg-white border rounded-xl shadow-sm hover:shadow-md transition">
+                    <div @click="toggleCheck(todo)" class="flex items-center flex-1 cursor-pointer">
+                        <div :class="isTaskDone(todo) ? 'bg-green-500 border-green-500' : 'bg-white border-slate-300'" class="w-6 h-6 border-2 rounded-md flex items-center justify-center mr-4 transition-all">
+                            <svg v-if="isTaskDone(todo)" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="flex-1">
+                            <span :class="{'line-through text-slate-400': isTaskDone(todo)}" class="text-slate-700 font-semibold">{{ todo.title }}</span>
+                            <div class="text-[10px] text-slate-400 mt-1 flex gap-2">
+                                <span class="bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded uppercase font-bold">{{ todo.repeatType }}</span>
+                                <span v-if="todo.repeatType === 'weekly'">매주 {{ getDayName(todo.start) }}요일</span>
+                                <span v-if="todo.repeatType === 'monthly'">매월 {{ getDayDate(todo.start) }}일</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button v-if="todo.url" @click="openLink(todo.url)" class="mx-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-xs font-bold">🔗 이동</button>
+                    <button @click="deleteTodo(todo.id)" class="text-slate-300 hover:text-red-500 p-1">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+                <div v-if="viewFilteredTodos.length === 0" class="text-center py-20 text-slate-400">
+                    <p class="text-sm">해당하는 할 일이 없습니다.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-[400px] flex flex-col gap-4">
+            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                <h2 class="text-lg font-bold mb-4 text-slate-800">새 Task 입력</h2>
+                <input v-model="newTodo.title" type="text" placeholder="작업 이름" class="w-full p-2.5 border rounded-lg mb-2 outline-indigo-500 shadow-sm">
+                <input v-model="newTodo.url" type="text" placeholder="URL (선택사항)" class="w-full p-2.5 border rounded-lg mb-3 text-sm outline-indigo-500 shadow-sm">
+                
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <div>
+                        <label class="text-[11px] text-slate-500 ml-1 font-bold">시작일 (기준일)</label>
+                        <input v-model="newTodo.start" type="date" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-500 ml-1 font-bold">종료일</label>
+                        <input v-model="newTodo.end" type="date" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="text-[11px] text-slate-500 ml-1 font-bold">반복 유형</label>
+                    <select v-model="newTodo.repeatType" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50 shadow-sm">
+                        <option value="daily">매일 반복 (Daily)</option>
+                        <option value="weekly">매주 반복 (시작일 요일 기준)</option>
+                        <option value="monthly">매월 반복 (시작일 날짜 기준)</option>
+                    </select>
+                </div>
+                <button @click="addTodo" class="w-full bg-slate-800 text-white py-3 rounded-lg font-bold hover:bg-slate-700 transition shadow-lg">Task 생성</button>
+            </div>
+
+            <div class="bg-white flex-1 rounded-2xl shadow-lg border border-slate-200 flex flex-col overflow-hidden min-h-[300px]">
+                <div class="p-4 bg-slate-800 text-white font-bold flex justify-between items-center text-sm">
+                    <span>전체 Task 마스터 목록</span>
+                    <span class="bg-indigo-500 text-[10px] px-2 py-1 rounded-full">{{ todos.length }}</span>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 custom-scroll">
+                    <div v-for="todo in todos" :key="'master-'+todo.id" class="p-3 mb-2 border rounded-lg flex justify-between items-start hover:bg-slate-50 border-slate-100 transition">
+                        <div class="flex-1 overflow-hidden">
+                            <p class="font-bold text-slate-700 truncate text-sm">{{ todo.title }}</p>
+                            <p class="text-[10px] text-slate-400 mt-1 uppercase">{{ todo.repeatType }} | {{ todo.start }} ~</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBeSGb4LY8776SQNELJDR4_g6ahjd4b2T8",
+            authDomain: "my-sm-6f7b6.firebaseapp.com",
+            projectId: "my-sm-6f7b6",
+            storageBucket: "my-sm-6f7b6.firebasestorage.app",
+            messagingSenderId: "1086852640760",
+            appId: "1:1086852640760:web:1bc57f01157ecbf9a0300d",
+            measurementId: "G-JBLGEF2YNW"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const todoCol = collection(db, "todos");
+
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const selectedDate = ref(todayStr);
+                const currentView = ref('daily');
+                const todos = ref([]);
+                const newTodo = ref({ title: '', url: '', start: todayStr, end: '2026-12-31', repeatType: 'daily' });
+
+                onMounted(() => {
+                    onSnapshot(query(todoCol), (snapshot) => {
+                        todos.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    });
+                });
+
+                const displayFullDate = computed(() => new Date(selectedDate.value).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }));
+                const viewLabel = computed(() => ({ daily: '오늘의', weekly: '주간 반복', monthly: '월간 반복' }[currentView.value]));
+                
+                const changeDate = (days) => {
+                    const d = new Date(selectedDate.value);
+                    d.setDate(d.getDate() + days);
+                    selectedDate.value = d.toISOString().split('T')[0];
+                };
+
+                // 요일/날짜 헬퍼 함수
+                const getDayName = (dateStr) => ['일','월','화','수','목','금','토'][new Date(dateStr).getDay()];
+                const getDayDate = (dateStr) => new Date(dateStr).getDate();
+
+                // 필터링 핵심 로직 수정됨
+                const viewFilteredTodos = computed(() => {
+                    const selObj = new Date(selectedDate.value);
+                    const selYear = selObj.getFullYear();
+                    const selMonth = selObj.getMonth();
+                    const selDay = selObj.getDate();
+                    const selWeekDay = selObj.getDay();
+
+                    return todos.value.filter(todo => {
+                        const start = new Date(todo.start);
+                        const end = new Date(todo.end);
+                        
+                        // 공통: 기간 내에 있어야 함
+                        if (selObj < start || selObj > end) return false;
+
+                        // Daily 탭: 오늘 딱 해당되는 것만 노출
+                        if (currentView.value === 'daily') {
+                            if (todo.repeatType === 'daily') return true;
+                            if (todo.repeatType === 'weekly') return selWeekDay === start.getDay();
+                            if (todo.repeatType === 'monthly') {
+                                const targetDay = start.getDate();
+                                const lastDayOfMonth = new Date(selYear, selMonth + 1, 0).getDate();
+                                return selDay === Math.min(targetDay, lastDayOfMonth);
+                            }
+                        }
+                        
+                        // Weekly/Monthly 탭: 해당 유형의 모든 일정 노출 (관리용)
+                        return todo.repeatType === currentView.value;
+                    });
+                });
+
+                const toggleCheck = async (todo) => {
+                    const completedDates = todo.completedDates || [];
+                    const idx = completedDates.indexOf(selectedDate.value);
+                    idx > -1 ? completedDates.splice(idx, 1) : completedDates.push(selectedDate.value);
+                    await updateDoc(doc(db, "todos", todo.id), { completedDates });
+                };
+
+                const isTaskDone = (todo) => todo.completedDates?.includes(selectedDate.value);
+
+                const addTodo = async () => {
+                    if (!newTodo.value.title) return;
+                    let targetUrl = newTodo.value.url.trim();
+                    if (targetUrl && !targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
+                    await addDoc(todoCol, { ...newTodo.value, url: targetUrl, completedDates: [], createdAt: new Date() });
+                    newTodo.value.title = ''; newTodo.value.url = '';
+                };
+
+                const deleteTodo = async (id) => { if(confirm('정말 삭제할까요?')) await deleteDoc(doc(db, "todos", id)); };
+                const openLink = (url) => window.open(url, '_blank');
+
+                return { selectedDate, currentView, displayFullDate, viewLabel, changeDate, todos, newTodo, addTodo, deleteTodo, toggleCheck, isTaskDone, viewFilteredTodos, openLink, getDayName, getDayDate };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
